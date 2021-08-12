@@ -47,9 +47,19 @@ CFLAGS = -isysroot ${IOS_SDK} -I${IOS_SDK}/usr/include -arch ${ARCH} -I${INCLUDE
 CXXFLAGS = -stdlib=libc++ -std=c++11 -isysroot ${IOS_SDK} -I${IOS_SDK}/usr/include -arch ${ARCH} -I${INCLUDEDIR} -miphoneos-version-min=7.0 -O3 -fembed-bitcode
 LDFLAGS = -stdlib=libc++ -isysroot ${IOS_SDK} -L${LIBDIR} -L${IOS_SDK}/usr/lib -arch ${ARCH} -miphoneos-version-min=7.0
 
+# Library version definitions
+SPATIALITE_VERSION = 5.0.1
+TIFF_VERSION = 4.3.0
+PROJ_VERSION = 8.1.0
+GEOS_VERSION = 3.8.2
+RTTOPO_VERSION = 1.1.0
+SQLITE3_YEAR = 2021
+SQLITE3_VERSION = 3360000
+
 arch: ${LIBDIR}/libspatialite.a
 
-${LIBDIR}/libspatialite.a: ${LIBDIR}/libproj.a ${LIBDIR}/libgeos.a ${CURDIR}/spatialite
+#${LIBDIR}/libspatialite.a: ${LIBDIR}/libtiff.a ${LIBDIR}/libproj.a ${LIBDIR}/libgeos.a ${LIBDIR}/librttopo.a ${CURDIR}/spatialite
+${LIBDIR}/libspatialite.a: ${LIBDIR}/librttopo.a ${CURDIR}/spatialite
 	cd spatialite && env \
 	CXX=${CXX} \
 	CC=${CC} \
@@ -58,12 +68,28 @@ ${LIBDIR}/libspatialite.a: ${LIBDIR}/libproj.a ${LIBDIR}/libgeos.a ${CURDIR}/spa
 	LDFLAGS="${LDFLAGS} -liconv -lgeos -lgeos_c -lc++" ./configure --host=${HOST} --enable-freexl=no --enable-libxml2=no --prefix=${PREFIX} --with-geosconfig=${BINDIR}/geos-config --disable-shared && make clean install-strip
 
 ${CURDIR}/spatialite:
-	curl http://www.gaia-gis.it/gaia-sins/libspatialite-sources/libspatialite-4.4.0-RC1.tar.gz > spatialite.tar.gz
+	curl http://www.gaia-gis.it/gaia-sins/libspatialite-sources/libspatialite-${SPATIALITE_VERSION}.tar.gz > spatialite.tar.gz
 	tar -xzf spatialite.tar.gz
 	rm spatialite.tar.gz
-	mv libspatialite-4.4.0-RC1 spatialite
+	mv libspatialite-${SPATIALITE_VERSION} spatialite
 	./update-spatialite
 	./change-deployment-target spatialite
+
+${LIBDIR}/libtiff.a: ${CURDIR}/tiff
+	cd tiff && env \
+	CXX=${CXX} \
+	CC=${CC} \
+	CFLAGS="${CFLAGS}" \
+	CXXFLAGS="${CXXFLAGS}" \
+	LDFLAGS="${LDFLAGS}" ./configure --host=${HOST} --prefix=${PREFIX} --disable-shared && make clean install
+
+${CURDIR}/tiff:
+	curl -L http://download.osgeo.org/libtiff/tiff-${TIFF_VERSION}.tar.gz > tiff.tar.gz
+	tar -xzf tiff.tar.gz
+	rm tiff.tar.gz
+	mv tiff-${TIFF_VERSION} tiff
+	./change-deployment-target tiff
+	(pushd tiff && mv VERSION VERSION.txt && patch -p0 < ../tiff-rename-VERSION.patch)
 
 ${LIBDIR}/libproj.a: ${CURDIR}/proj
 	cd proj && env \
@@ -71,13 +97,13 @@ ${LIBDIR}/libproj.a: ${CURDIR}/proj
 	CC=${CC} \
 	CFLAGS="${CFLAGS}" \
 	CXXFLAGS="${CXXFLAGS}" \
-	LDFLAGS="${LDFLAGS}" ./configure --host=${HOST} --prefix=${PREFIX} --disable-shared && make clean install
+	LDFLAGS="${LDFLAGS}" ./configure --host=${HOST} --prefix=${PREFIX} --disable-shared --without-curl && make clean install
 
 ${CURDIR}/proj:
-	curl -L http://download.osgeo.org/proj/proj-4.9.3.tar.gz > proj.tar.gz
+	curl -L http://download.osgeo.org/proj/proj-${PROJ_VERSION}.tar.gz > proj.tar.gz
 	tar -xzf proj.tar.gz
 	rm proj.tar.gz
-	mv proj-4.9.3 proj
+	mv proj-${PROJ_VERSION} proj
 	./change-deployment-target proj
 
 ${LIBDIR}/libgeos.a: ${CURDIR}/geos
@@ -89,11 +115,28 @@ ${LIBDIR}/libgeos.a: ${CURDIR}/geos
 	LDFLAGS="${LDFLAGS}" ./configure --host=${HOST} --prefix=${PREFIX} --disable-shared && make clean install
 
 ${CURDIR}/geos:
-	curl http://download.osgeo.org/geos/geos-3.6.1.tar.bz2 > geos.tar.bz2
+	curl http://download.osgeo.org/geos/geos-${GEOS_VERSION}.tar.bz2 > geos.tar.bz2
 	tar -xzf geos.tar.bz2
 	rm geos.tar.bz2
-	mv geos-3.6.1 geos
+	mv geos-${GEOS_VERSION} geos
 	./change-deployment-target geos
+
+${LIBDIR}/librttopo.a: ${CURDIR}/rttopo
+	cd rttopo && \
+	./autogen.sh && \
+	../change-deployment-target . && \
+	env \
+	CXX=${CXX} \
+	CC=${CC} \
+	CFLAGS="${CFLAGS}" \
+	CXXFLAGS="${CXXFLAGS}" \
+	LDFLAGS="${LDFLAGS}" ./configure --host=${HOST} --prefix=${PREFIX} --with-geosconfig=${BINDIR}/geos-config --disable-shared && make clean install
+
+${CURDIR}/rttopo:
+	curl -L https://git.osgeo.org/gitea/rttopo/librttopo/archive/librttopo-${RTTOPO_VERSION}.tar.gz > rttopo.tar.gz
+	tar -xzf rttopo.tar.gz
+	rm rttopo.tar.gz
+	mv librttopo rttopo
 
 ${LIBDIR}/libsqlite3.a: ${CURDIR}/sqlite3
 	cd sqlite3 && env LIBTOOL=${XCODE_DEVELOPER}/Toolchains/XcodeDefault.xctoolchain/usr/bin/libtool \
@@ -106,12 +149,12 @@ ${LIBDIR}/libsqlite3.a: ${CURDIR}/sqlite3
 	   --enable-dynamic-extensions --enable-static && make clean install-includeHEADERS install-libLTLIBRARIES
 
 ${CURDIR}/sqlite3:
-	curl https://www.sqlite.org/2018/sqlite-autoconf-3250200.tar.gz > sqlite3.tar.gz
+	curl https://www.sqlite.org/${SQLITE_YEAR}/sqlite-autoconf-${SQLITE3_VERSION}.tar.gz > sqlite3.tar.gz
 	tar xzvf sqlite3.tar.gz
 	rm sqlite3.tar.gz
-	mv sqlite-autoconf-3250200 sqlite3
+	mv sqlite-autoconf-${SQLITE3_VERSION} sqlite3
 	./change-deployment-target sqlite3
 	touch sqlite3
 
 clean:
-	rm -rf build geos proj spatialite include lib
+	rm -rf build geos proj spatialite rttopo tiff include lib
